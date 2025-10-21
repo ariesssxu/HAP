@@ -1,0 +1,12 @@
+curriculum:
+  - steps: 1
+    tasks: [2]
+  #   tasks: [0,1]
+  # - steps: 2000000
+  #   tasks: [2,3]  # The first tasks to train on
+  # - steps: 4000000
+  #   tasks: [3,4]
+  # - steps: 6000000
+  #   tasks: [4,5]  
+  # - steps: 8000000
+  #   tasks: [4,5]

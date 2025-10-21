@@ -1,0 +1,25 @@
+curriculum:
+  - steps: 1
+    tasks: [0, 1]  # The first tasks to train on
+  - steps: 500
+    tasks: [0, 1]  # The first tasks to train on
+  - steps: 1000
+    tasks: [2, 3]  # The next tasks to train on
+  - steps: 150000
+    tasks: [4, 5]  # Continue with more tasks
+  - steps: 200000
+    tasks: [6, 7]
+  - steps: 250000
+    tasks: [8, 9]
+  - steps: 300000
+    tasks: [10, 11]
+  - steps: 350000
+    tasks: [12, 13]
+  - steps: 400000
+    tasks: [14, 15]
+  - steps: 450000
+    tasks: [16, 17]
+  - steps: 500000
+    tasks: [18, 19]
+  - steps: 550000
+    tasks: [20]  # Final task

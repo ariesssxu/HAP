@@ -1,0 +1,12 @@
+# requirements.txt
+flask
+flask-sqlalchemy
+flask-login
+werkzeug
+pillow
+numpy
+gym
+minigrid_human_test
+pygame
+flask_sqlalchemy
+flask_login

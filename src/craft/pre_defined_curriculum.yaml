@@ -1,0 +1,20 @@
+
+# TASKS = ['get[gem]', 'get[gold]', 'get[grass]', 'get[iron]', 'get[rock]', 'get[wood]', \5
+#     'make[arrow]', 'make[axe]', 'make[bed]', 'make[bench]', 'make[bow]', 'make[bridge]', \11
+#         'make[bundle]', 'make[cloth]', 'make[flag]', 'make[goldarrow]', 'make[hammer]', \16
+#             'make[knife]', 'make[ladder]', 'make[plank]', 'make[rope]', 'make[shears]', 'make[slingshot]', 'make[stick]']23
+# TASKS_SIMPLE_GET = ["get[wood]", "get[grass]", "get[iron]", "get[rock]"] # simple get, OK
+# TASKS_SIMPLE_MAKE = ["make[plank]", "make[stick]", "make[cloth]", "make[rope]"] # simple make, OK
+# TASKS_HARD = ["make[bed]", "make[axe]", "make[shears]", "get[gold]"]
+
+curriculum:
+  - steps: 1000
+    tasks: [0, 1]
+  - steps: 10000
+    tasks: [0, 1]  # The first tasks to train on
+  - steps: 2000
+    tasks: [0, 1, 2, 3, 4, 5]  # The first tasks to train on
+  - steps: 300000
+    tasks: [0, 1, 2, 3, 4, 5, 13, 19, 20, 23]  # The first tasks to train on
+  - steps: 400000
+    tasks: None

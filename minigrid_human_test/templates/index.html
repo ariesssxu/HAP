@@ -1,0 +1,183 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MiniGrid Server</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .controls { margin: 20px 0; }
+        button { padding: 10px; margin: 5px; cursor: pointer; }
+        #env-image { border: 2px solid #ccc; margin-top: 20px; }
+        .status { margin: 10px 0; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MiniGrid Control Panel</h1>
+
+        <div class="user-info">
+            Logged in as: {{ current_user.email }} 
+            <button onclick="window.location.href='/logout'">Logout</button>
+        </div>
+        
+        <div class="controls">
+            <select id="task-select">
+                <option value="0">Empty Environment</option>
+                <option value="1" selected>Crossing Environment</option>
+                <option value="2">DoorKey Environment</option>
+                <option value="3">Four Rooms</option>
+                <option value="4">Locked Room</option>
+                <option value="5">Playground</option>
+            </select>
+            
+            <button class="reset-btn" onclick="initializeEnv()">Start/Reset</button>
+        </div>
+
+        <div class="action-buttons">
+            <!-- Movement Controls -->
+            <div class="movement-grid">
+                <button class="up action-btn" onclick="sendAction(0)">W: Up</button>
+                <button class="left action-btn" onclick="sendAction(2)">A: Left</button>
+                <button class="down action-btn" onclick="sendAction(1)">S: Down</button>
+                <button class="right action-btn" onclick="sendAction(7)">D: Right</button>
+            </div>
+            
+            <div class="action-row">
+                <button class="action-btn" onclick="sendAction(3)">O: Pick Up</button>
+                <button class="action-btn" onclick="sendAction(4)">P: Drop</button>
+                <button class="action-btn" onclick="sendAction(5)">L: Action3</button>
+                <button class="action-btn" onclick="sendAction(6)">ESC: Done</button>
+            </div>
+        </div>
+        
+
+        <div class="status">
+            Reward: <span id="reward">0</span> | 
+            Done: <span id="done">False</span>
+        </div>
+
+        <img id="env-image" src="" alt="Environment View">
+
+        <script>
+            let currentReward = 0;
+            
+            function sendAction(action) {
+                fetch('/step', {
+                    method: 'POST',
+                    body: new URLSearchParams({action: action}),
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if(data.image) {
+                        document.getElementById('env-image').src = `data:image/png;base64,${data.image}`;
+                        updateStatus(data.reward, data.done);
+                    }
+                });
+            }
+
+            function updateStatus(reward, done) {
+                currentReward += reward;
+                document.getElementById('reward').textContent = currentReward;
+                document.getElementById('done').textContent = done;
+                
+                // Disable all action buttons when done
+                const actionButtons = document.querySelectorAll('.action-btn');
+                actionButtons.forEach(btn => {
+                    btn.disabled = done;
+                });
+            }
+
+            function initializeEnv() {
+                const taskIndex = document.getElementById('task-select').value;
+                fetch('/init', {
+                    method: 'POST',
+                    body: new URLSearchParams({task: taskIndex}),
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if(data.image) {
+                        document.getElementById('env-image').src = `data:image/png;base64,${data.image}`;
+                        currentReward = 0;
+                        updateStatus(0, false);
+                    }
+                });
+            }
+        </script>
+    </div>
+    <style>
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .movement-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 5px;
+        }
+        
+        .up {
+            grid-column: 2;
+            grid-row: 1;
+        }
+        
+        .left {
+            grid-column: 1;
+            grid-row: 2;
+        }
+        
+        .down {
+            grid-column: 2;
+            grid-row: 3;
+        }
+        
+        .right {
+            grid-column: 3;
+            grid-row: 2;
+        }
+        
+        .action-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        button {
+            padding: 12px 18px;
+            min-width: 100px;
+            font-size: 14px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        button:hover {
+            background: #e9ecef;
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            background-color: #e9ecef;
+            color: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        
+        .reset-btn {
+            background-color: #28a745;
+            color: white;
+        }
+
+    </style>
+</body>
+</html>
+

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MiniGrid Human Test</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script> -->
+    <script src="static/js/vue.js"></script>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>MiniGrid Cognitive Test</h1>
+            <div class="user-info">
+                {{ currentEnv }} - Trial {{ currentTrial }}/{{ TRIALS_PER_ENV }}
+                <button @click="logout">Logout</button>
+            </div>
+        </div>
+
+        <div class="main-container">
+            <!-- Progress Panel -->
+            <div class="progress-container">
+                <div v-for="(env, index) in environments" class="env-progress">
+                    <div class="env-name">Stage [[ index + 1 ]]: [[ env.label ]]</div>
+                    <div class="trials">
+                        <div v-for="t in TRIALS_PER_ENV" 
+                             :class="['trial-dot', t <= progress[env.name].trials ? 'completed' : '']">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="game-container">
+                <img :src="currentImage" 
+                    class="environment-view"
+                    v-if="currentImage"
+                    style="width: 512px; height: 512px">
+                
+                <div class="status">
+                    Reward: [[ reward ]] (Current Step) | Total Reward: [[ totalReward ]]
+                    <br>
+                    (Note: Stage 6: Playground have no explicit reward.)
+                    <br>
+                    <br>
+                    Steps: [[ steps ]] (Current Steps) / [[ totalSteps ]] (Total Steps)
+                </div>
+                
+                <div class="controls">
+                    <div class="movement-controls">
+                        <button @click="sendAction(0)" :disabled="!canInteract">Up</button>
+                        <div>
+                            <button @click="sendAction(2)" :disabled="!canInteract">Left</button>
+                            <button @click="sendAction(1)" :disabled="!canInteract">Down</button>
+                            <button @click="sendAction(7)" :disabled="!canInteract">Right</button>
+                        </div>
+                    </div>
+                    <br/>
+                    <div class="action-controls">
+                        <div>
+                            <button @click="sendAction(3)" :disabled="!canInteract">Action 1</button>
+                            <button @click="sendAction(4)" :disabled="!canInteract">Action 2</button>
+                            <button @click="sendAction(5)" :disabled="!canInteract">Action 3</button>
+                            <!-- <button @click="sendAction(6)" :disabled="!canInteract">ESC: Done</button> -->
+                        </div>
+                        <br/>
+                        <button class="reset-btn" @click="initializeEnv" :disabled="canInteract">Start/Reset</button>
+                    </div>                    
+                </div>
+            </div>
+        </div>
+
+        <!-- <div class="status">
+            Reward: {{ totalReward }} | Completed: {{ completedStatus }}
+        </div> -->
+    </div>
+
+    <script>
+    new Vue({
+        el: '#app',
+        delimiters: ['[[', ']]'],
+        data: {
+            // ... existing data properties ...
+            environments: [
+                {name: 'empty', label: 'Empty Environment'},
+                {name: 'crossing', label: 'Crossing'},
+                {name: 'doorkey', label: 'Door Key'},
+                {name: 'fourrooms', label: 'Four Rooms'},
+                {name: 'lockedroom', label: 'Locked Room'},
+                {name: 'playground', label: 'Playground'}
+            ],
+            progress: {
+                'empty': {trials: 0, completed: false},
+                'crossing': {trials: 0, completed: false},
+                'doorkey': {trials: 0, completed: false},
+                'fourrooms': {trials: 0, completed: false},
+                'lockedroom': {trials: 0, completed: false},
+                'playground': {trials: 0, completed: false}
+            },
+            currentImage: null,
+            currentEnv: '',
+            currentTrial: 0,
+            TRIALS_PER_ENV: 5, // Set to your actual trial count
+            reward: 0,
+            totalReward: 0,
+            isDone: false,
+            isInitialized: false,
+            steps: 0,
+            totalSteps: 0
+        },
+        computed: {
+            canInteract() {
+                return this.isInitialized && !this.isDone;
+            },
+            completedStatus() {
+                return this.isDone ? 'Completed' : 'In Progress';
+            }
+        },
+        mounted() {
+            this.loadProgress();
+        },
+        methods: {
+            async loadProgress() {
+                const response = await fetch('/progress');
+                const data = await response.json();
+                this.progress = data;
+            },
+            async updateProgress() {
+                const response = await fetch('/progress');
+                this.progress = await response.json();
+            },
+            async initializeEnv() {
+                try {
+                    const response = await fetch('/init', { method: 'POST' });
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        alert(data.error);
+                        return;
+                    }
+                    
+                    this.currentImage = `data:image/png;base64,${data.image}`;
+                    this.currentEnv = data.env_name;
+                    this.currentTrial = data.trial_number;
+                    this.reward = 0;
+                    this.isDone = false;
+                    this.isInitialized = true;
+                    this.totalSteps = data.total_steps;
+
+                    console.log(this.currentEnv, this.currentTrial)
+                    
+                } catch (error) {
+                    console.error('Initialize error:', error);
+                    alert('Connection error');
+                }
+            },
+            async sendAction(action) {
+                if (!this.canInteract) return;
+                
+                const response = await fetch('/step', {
+                    method: 'POST',
+                    body: new URLSearchParams({action: action}),
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    this.currentImage = `data:image/png;base64,${data.image}`;
+                    this.totalReward += data.reward;
+                    this.reward += data.reward;
+
+                    this.steps++;
+                    // ... rest of existing step code ...                    
+                    if (data.done) {
+                        this.isDone = true;
+                        this.steps = 0;
+                        await this.updateProgress();
+                        if (data.trials_completed) {
+                            this.currentTrial = data.trials_completed;
+                        }
+                    }
+                }
+            },
+            logout() {
+                window.location.href = '/logout';
+            }
+        }
+    });
+    </script>
+</body>
+</html>
