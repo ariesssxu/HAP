@@ -1,7 +1,7 @@
 ## Heterogeneous Adversarial Play in Interactive Environments  
 Manjie Xu, Xinyi Yang, Jiayu Zhan, Wei Liang, Chi Zhang, Yixin Zhu
 
-<a href='https://arxiv.org'>
+<a href='https://www.arxiv.org/abs/2510.18407'>
   <img src='https://img.shields.io/badge/Paper-Arxiv-green?style=plastic&logo=arXiv&logoColor=green' alt='Paper Arxiv'>
 </a>
 <a href='https://sites.google.com/view/hap-learning'>
