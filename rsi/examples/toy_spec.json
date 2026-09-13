@@ -1,0 +1,14 @@
+{
+  "name": "constraint-memory-demo",
+  "domain": "toy",
+  "goal": "inspect, execute, and satisfy the storage rule",
+  "difficulty": 4,
+  "horizon": 8,
+  "seed": 11,
+  "distractors": 2,
+  "partial_observability": 0.4,
+  "required_skills": ["inspect", "plan"],
+  "hidden_rules": ["verify_before_finish"],
+  "action_space": ["inspect", "plan", "execute", "verify", "recover", "finish"],
+  "metadata": {"lesson": "memory mutation"}
+}

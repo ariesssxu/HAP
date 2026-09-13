@@ -1,7 +1,7 @@
 ## Heterogeneous Adversarial Play in Interactive Environments  
 Manjie Xu, Xinyi Yang, Jiayu Zhan, Wei Liang, Chi Zhang, Yixin Zhu
 
-<a href='https://arxiv.org'>
+<a href='https://www.arxiv.org/abs/2510.18407'>
   <img src='https://img.shields.io/badge/Paper-Arxiv-green?style=plastic&logo=arXiv&logoColor=green' alt='Paper Arxiv'>
 </a>
 <a href='https://sites.google.com/view/hap-learning'>
@@ -11,6 +11,22 @@ Manjie Xu, Xinyi Yang, Jiayu Zhan, Wei Liang, Chi Zhang, Yixin Zhu
 ![](figs/intro.png)
 
 This repo contains demo code for our NeurIPS paper "Heterogeneous Adversarial Play in Interactive Environments." We propose an adversarial learning framework in which a teacher module generates problems tailored to the student's current capabilities
+
+### Environment + Harness Co-evolution Prototype
+
+The original HAP code is unchanged. A separate, student-friendly prototype in
+[`rsi/`](rsi/) extends HAP's task-selection idea to executable environment
+design and harness evolution. Its toy experiment has no third-party
+dependencies and includes the fixed/evolving environment × fixed/evolving
+harness baselines.
+
+```sh
+python -m rsi.cli --config rsi/configs/smoke.json
+python -m unittest discover -s rsi/tests -v
+```
+
+See [`rsi/README.md`](rsi/README.md) for the architecture, exact commands,
+experiment plan, metrics, milestones, and extension points.
 
 ### Install
 ```sh

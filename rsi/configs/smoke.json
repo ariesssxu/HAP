@@ -1,0 +1,6 @@
+{
+  "rounds": 2,
+  "episodes_per_round": 1,
+  "seed": 7,
+  "output_dir": "results/rsi-smoke"
+}

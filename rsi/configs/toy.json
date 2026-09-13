@@ -1,0 +1,6 @@
+{
+  "rounds": 12,
+  "episodes_per_round": 3,
+  "seed": 7,
+  "output_dir": "results/rsi-toy"
+}
