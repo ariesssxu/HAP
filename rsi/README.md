@@ -1,19 +1,15 @@
 # Environment and Harness Co-evolution Prototype
 
-This directory is a small research scaffold for students who want to move from
-HAP's **teacher selects a task** setting to a more open setting where a system
-can design both an executable environment and the harness around a student
-agent.
+This package is a research scaffold for studying how a system can design both
+an executable environment and the harness around a student agent.
 
-It is intentionally separated from the original HAP code in `src/` and `envs/`.
-Nothing here changes the paper experiments. The core toy path uses only the
-Python standard library, is deterministic under a seed, and should be readable
-before it is impressive.
+The core toy path uses only the Python standard library, is deterministic under
+a seed, and is intended to make causal claims and implementation boundaries
+easy to inspect.
 
 ## Research question
 
-HAP adapts a task distribution to the student's current ability. This prototype
-asks a broader question:
+The project asks:
 
 > Can a designer generate valid environments that create useful learning
 > pressure while a second mechanism improves the prompt, memory, skills, and
@@ -54,7 +50,8 @@ rsi/
 ├── run.py                    # alias for the CLI
 ├── specs.py                  # JSON DSL, validation, compiler registry
 ├── toy_env.py                # deterministic, no-API local environment
-├── minigrid_adapter.py       # optional bridge to HAP's vendored MiniGrid
+├── minigrid_env.py           # allow-listed multi-scenario MiniGrid runtime
+├── policy.py                 # observation-conditioned student policies
 ├── designers.py              # fixed/random/difficulty/progress/LLM designers
 ├── harness.py                # prompt + memory + skills + workflow
 ├── diagnosis.py              # oracle/rule-based/LLM diagnosers
@@ -64,17 +61,18 @@ rsi/
 ├── llm.py                    # provider-neutral complete(prompt) interface
 ├── configs/
 │   ├── smoke.json
-│   └── toy.json
+│   ├── toy.json
+│   └── minigrid.json
 ├── examples/
 │   ├── toy_spec.json
-│   └── minigrid_empty_spec.json
+│   └── minigrid_door_key.json
 └── tests/
     └── test_smoke.py
 ```
 
 ## Quick start: no API and no installation
 
-From the HAP repository root, use Python 3.9 or newer:
+From the repository root, use Python 3.10 or newer:
 
 ```sh
 python -m rsi.cli --config rsi/configs/smoke.json
@@ -109,9 +107,30 @@ python -m rsi.cli \
 python -m rsi.run --config rsi/configs/smoke.json
 ```
 
-No `pip install -r requirements.txt` is needed for these commands. The root
-requirements file belongs to the full original HAP experiments and is much
-larger.
+No installation or third-party dependency is needed for these commands.
+
+## MiniGrid benchmark
+
+Install the maintained optional dependency:
+
+```sh
+python -m pip install -e '.[minigrid]'
+python -m rsi.cli --domain minigrid --config rsi/configs/minigrid.json \
+  --policy-backend my_policy:Policy
+```
+
+The registered scenario families include Empty, FourRooms, MultiRoom,
+DoorKey, KeyCorridor, DynamicObstacles, LavaCrossing, Memory, Fetch, PutNear,
+RedBlueDoors, UnlockPickup, and BlockedUnlockPickup. Each validated spec maps
+to an allow-listed Gymnasium environment ID; arbitrary environment loading is
+not accepted.
+
+A student policy implements `reset()` and
+`act(observation, harness, actions, step) -> action`. Unlike the toy workflow,
+this interface chooses an action after every partial observation. The default
+workflow policy only checks integration plumbing; meaningful experiments must
+provide a trained, planning, or language-model policy. Use `--llm-policy` with
+`--llm-backend` for the built-in language-model adapter.
 
 ## The four required baselines
 
@@ -134,9 +153,9 @@ evaluation set across conditions when reporting results.
 - `RandomDesigner` samples a seeded difficulty level.
 - `DifficultyDesigner` moves up after a score at or above its target and down
   after a lower score.
-- `LearningProgressDesigner` explores unseen levels, then favors the level with
-  the largest absolute recent change. It is the closest analogue to HAP's
-  ability-aware curriculum in this prototype.
+- `LearningProgressDesigner` uses a shrinkage estimate and an
+  uncertainty-aware acquisition score to target the competence frontier while
+  still valuing recent learning or forgetting.
 - `LLMDesigner` requests a JSON spec from any configured text backend. The same
   strict validator is applied to its output. A fallback spec makes classroom
   demos robust to malformed responses.
@@ -158,7 +177,9 @@ The oracle diagnoser reads privileged failure signals and provides an upper
 bound for correct attribution. The rule-based diagnoser sees the public spec and
 observable trace. The LLM diagnoser is a provider-neutral stub. The reference
 evolver only makes bounded, deduplicated edits and increments a revision number,
-which keeps every change auditable in the JSONL logs.
+which keeps every change auditable in the JSONL logs. The experiment evaluates
+each candidate and incumbent on paired seeds, penalizes added complexity, and
+rejects changes without sufficient validation gain.
 
 ## Connecting an LLM
 
@@ -185,31 +206,13 @@ handling belong inside the backend. Do not commit secrets. For experiments,
 record model name, model version, temperature, prompt, retry count, token usage,
 and raw proposal before validation.
 
-## Optional HAP MiniGrid adapter
-
-`minigrid_adapter.py` lazily imports the MiniGrid fork already stored at
-`envs/minigrid`. It maps harness workflow tokens such as `left`, `right`, and
-`forward` to MiniGrid actions. Install the dependencies from the existing HAP
-setup only if you want this bridge:
-
-```sh
-pip install -e envs/minigrid
-python -m rsi.cli \
-  --spec rsi/examples/minigrid_empty_spec.json \
-  --baseline fixed_env__fixed_harness
-```
-
-The supplied default harness is not a trained MiniGrid solver, so this command
-tests compilation and rollout plumbing rather than expected task success. A
-serious experiment should implement a vision/state encoder and a policy adapter,
-then compare on held-out MiniGrid seeds. The adapter intentionally stays out of
-the zero-dependency toy path.
-
 ## Metrics and experimental protocol
 
 Each episode record includes the full environment spec, harness revision,
 trajectory, observations, reward, normalized score, success flag, failure
-reason, oracle signals, and diagnosis. At minimum, report:
+reason, oracle signals, diagnosis, candidate harness, and paired validation
+decision. Summaries include success rate, normalized area under the learning
+curve, difficulty coverage, and mutation acceptance. At minimum, report:
 
 1. success rate and mean normalized score;
 2. area under the learning curve and rounds to a target success rate;
@@ -264,12 +267,11 @@ cost, and compare against parameter-matched random generation. Use a repair pass
 only as a separately reported ablation; silently repairing invalid specs changes
 the measured method.
 
-### Milestone 4 — scale to HAP environments
+### Milestone 4 — scale to real environments
 
-Adapt MiniGrid first, then consider CRAFT, Crafter, or Pacman. Define a narrow
-DSL and deterministic compiler for each domain. Match the original HAP task IDs
-or curriculum parameters where useful so that HAP task selection remains a
-meaningful baseline.
+Choose one external domain and define a narrow DSL plus deterministic compiler
+for it. Keep the optional adapter in its own dependency extra or integration
+package so the zero-dependency reference path remains small.
 
 ### Milestone 5 — credible research claim
 
@@ -296,13 +298,15 @@ without changing the evaluation protocol.
 
 - The toy environment is a transparent unit test for co-evolution mechanics,
   not evidence of real-world self-improvement.
-- The reference evolver greedily applies one diagnosis and has no candidate
-  search, validation set, rollback, or regression protection.
-- Learning progress uses a short score history and no uncertainty estimate.
+- The reference evolver proposes only one diagnosis-conditioned candidate; it
+  has paired validation and rollback but no beam search or persistent held-out
+  validation set.
+- The frontier model uses a compact shrinkage/UCB heuristic rather than a
+  calibrated Bayesian ability model.
 - LLM responses are only JSON-parsed and schema-validated; production code also
   needs timeouts, retries, caching, budgets, and prompt-injection boundaries.
-- The MiniGrid adapter executes literal workflow actions and does not yet expose
-  a learned or language-model policy.
+- MiniGrid exposes a dynamic policy interface, but the included workflow policy
+  is intentionally not a capable solver.
 - Designers are not yet optimized for novelty, coverage, learnability, or
   adversarial robustness.
 - Summary statistics are intentionally minimal; add multi-seed aggregation and
@@ -310,27 +314,3 @@ without changing the evaluation protocol.
 
 These limitations are deliberate openings for student projects, not hidden
 claims that the prototype already solves environment synthesis.
-
-## Synchronization record
-
-- Date: 2026-09-14 (Asia/Shanghai)
-- Source: `https://github.com/ariesssxu/HAP`, branch `main`
-- Design rule: the original `src/` and `envs/` trees were left unchanged; the
-  prototype was added under `rsi/`, with only a link and quick-start commands
-  added to the root README.
-- Destination: `robinson:/home/manjie/HAP`
-- Files transferred: the complete `rsi/` directory and the updated root
-  `README.md`.
-- Reproduce the transfer from the local HAP root:
-
-  ```sh
-  scp -r rsi robinson:/home/manjie/HAP/
-  scp README.md robinson:/home/manjie/HAP/README.md
-  ```
-
-- Verify on Robinson:
-
-  ```sh
-  ssh robinson 'cd /home/manjie/HAP && python -m rsi.cli --config rsi/configs/smoke.json'
-  ssh robinson 'cd /home/manjie/HAP && python -m unittest discover -s rsi/tests -v'
-  ```

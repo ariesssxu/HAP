@@ -1,9 +1,0 @@
-X X X X X X X X X X X X X X X
-X X X X X X X X X X X X X X X
-X X X X X X X X X X X X X X X
-X + . + X 7 . . . 8 X + . + X
-X X . X X X X X X X X X . X X
-X . P n = = = = = = = n P . X
-X X X X . X + . + X . X X X X
-X . . . . + . . . + . . . . X
-X X X X X X X X X X X X X X X

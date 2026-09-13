@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rsi-coevolution"
+version = "0.3.0"
+description = "A controlled environment and harness co-evolution research scaffold"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [{name = "Manjie Xu"}]
+dependencies = []
+
+[project.optional-dependencies]
+minigrid = ["minigrid>=3.0,<4"]
+
+[project.scripts]
+rsi = "rsi.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["rsi*"]

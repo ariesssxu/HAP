@@ -1,87 +1,122 @@
-## Heterogeneous Adversarial Play in Interactive Environments  
-Manjie Xu, Xinyi Yang, Jiayu Zhan, Wei Liang, Chi Zhang, Yixin Zhu
+# RSI Environment–Harness Co-evolution
 
-<a href='https://www.arxiv.org/abs/2510.18407'>
-  <img src='https://img.shields.io/badge/Paper-Arxiv-green?style=plastic&logo=arXiv&logoColor=green' alt='Paper Arxiv'>
-</a>
-<a href='https://sites.google.com/view/hap-learning'>
-  <img src='https://img.shields.io/badge/Project-Page-blue?style=plastic&logo=Google%20chrome&logoColor=blue' alt='Project Page'>
-</a>  
+This repository explores recursive self-improvement (RSI) as a controlled
+co-evolution problem. Instead of updating model weights, it evolves two
+explicit, auditable objects around a fixed student:
 
-![](figs/intro.png)
+- an **environment specification** that creates useful learning pressure;
+- a **harness** containing the student's prompt, memory, skills, and workflow.
 
-This repo contains demo code for our NeurIPS paper "Heterogeneous Adversarial Play in Interactive Environments." We propose an adversarial learning framework in which a teacher module generates problems tailored to the student's current capabilities
+The research loop is:
 
-### Environment + Harness Co-evolution Prototype
+```text
+history ──> environment designer ──> validated EnvironmentSpec
+                                            │
+                                            v
+                                      deterministic compiler
+                                            │
+                                            v
+student + harness ─────────────────────> rollout result
+                                            │
+                                            v
+                                      failure diagnosis
+                                            │
+                                            v
+                                      harness evolution
+```
 
-The original HAP code is unchanged. A separate, student-friendly prototype in
-[`rsi/`](rsi/) extends HAP's task-selection idea to executable environment
-design and harness evolution. Its toy experiment has no third-party
-dependencies and includes the fixed/evolving environment × fixed/evolving
-harness baselines.
+The core safety boundary is: **a model proposes data; trusted code validates
+and compiles it**. An LLM does not directly write or execute environment code.
+
+## Quick start
+
+The project targets Python 3.10 or newer. The built-in toy experiment uses only
+the standard library:
 
 ```sh
 python -m rsi.cli --config rsi/configs/smoke.json
 python -m unittest discover -s rsi/tests -v
 ```
 
-See [`rsi/README.md`](rsi/README.md) for the architecture, exact commands,
-experiment plan, metrics, milestones, and extension points.
+Install the optional MiniGrid benchmark and run its scenario curriculum:
 
-### Install
 ```sh
-pip install -r requirements.txt
-pip install -e .
-```
-Optional: If manual dependency management is required:
-```
-# For compatibility with specific versions (if needed)
-pip install setuptools==65.5.0 pip==21 wheel==0.38.0
-pip install stable-baselines3==1.7.0 baselines==0.1.6 scikit-image seaborn tensorboard
-cd env_folder
-pip install xxx
-```
-### Code Structure
-
-```bash
-├── src                # Core implementation
-├── envs               # Modified interactive environments (Navigation, Minigrid, CRAFT, Crafter, Pacman) 
-├── replication        # Raw data for reproducing paper results and figures
-├── minigrid_human_test  # Human study WebUI frontend/backend (Flask-based)   
-└── requirements.txt   # Dependency list 
-```
-### Human Study WebUI
-![](figs/human_study.png)  
-
-We conducted a human study as part of our paper, collecting human performance data both with and without curricula to further demonstrate the effectiveness of our proposed algorithms based on Minigrid. 
-
-The WebUI is developed using Flask, with Python managing the backend task environments. Our interface supports multiprocess execution and can be hosted online.
-
-```bash
-cd minigrid_human_test
-pip install flask_sqlalchemy flask flask_login
-python app.py           # Host online (multi-user support)
+python -m pip install -e '.[minigrid]'
+python -m rsi.cli \
+  --domain minigrid \
+  --config rsi/configs/minigrid.json \
+  --policy-backend my_policy:Policy
 ```
 
-Human behavior data is recorded in a database. You can run parse_db.py to view basic statistics.
+The benchmark spans navigation, door/key planning, dynamic obstacles, lava,
+multi-room exploration, memory, object manipulation, and unlock tasks. The
+curriculum models evidence separately for every scenario × difficulty arm.
 
-Our human study results raw data on Minigrid: `minigrid_human_test/figs/human_study_results_hap.xlsx`
+For an editable install and the `rsi` command:
 
-### Ack
-Our code is built based on the following work:  
-[Crafter](https://github.com/danijar/crafter)  
-[Minigrid](https://github.com/Farama-Foundation/gym-minigrid)  
-[rl-plotter](https://github.com/ncullen93/rl-plotter)  
-[flask](https://flask.palletsprojects.com/)  
-[stable-baselines](https://github.com/DLR-RM/stable-baselines3)  
-[rlcurriculum](https://rlcurriculum.github.io/)
-
-### Citation
+```sh
+python -m pip install -e .
+rsi --config rsi/configs/toy.json
 ```
-@inproceedings{xu2025hap,
-  title={Heterogeneous Adversarial Play in Interactive Environments},
-  author={Xu, Manjie and Yang, Xinyi and Zhan, Jiayu and Liang, Wei and Zhang, Chi and Zhu, Yixin},
-  booktitle={Proceedings of the 39th International Conference on Neural Information Processing Systems},
-  year={2025}
-}
+
+Results are written as one JSONL trace per condition plus `summary.json` under
+the configured output directory.
+
+## Controlled comparison
+
+Every suite can run the same 2 × 2 experiment:
+
+| Condition | Environment | Harness | Isolates |
+|---|---|---|---|
+| `fixed_env__fixed_harness` | fixed | fixed | static control |
+| `evolving_env__fixed_harness` | evolving | fixed | curriculum effect |
+| `fixed_env__evolving_harness` | fixed | evolving | harness repair effect |
+| `evolving_env__evolving_harness` | evolving | evolving | interaction effect |
+
+All conditions receive isolated designer and harness state. Runs are seeded,
+and every proposal, rollout, diagnosis, mutation candidate, and validation
+decision is recorded.
+
+The adaptive designer uses a compact competence-frontier acquisition function:
+scores are shrunk toward a monotone difficulty prior, then balanced by target
+learnability, epistemic uncertainty, and recent learning or forgetting. Harness
+edits are not applied directly. Each candidate is compared with its incumbent
+on identical validation seeds and accepted only when its gain exceeds a minimum
+improvement threshold plus a complexity penalty. This creates a clean rollback
+ablation without introducing an optimization dependency.
+
+## Repository layout
+
+```text
+rsi/
+├── specs.py          # environment DSL, validation, compiler registry
+├── designers.py      # fixed, random, adaptive, and LLM designers
+├── toy_env.py        # deterministic reference compiler/environment
+├── minigrid_env.py   # validated multi-scenario MiniGrid compiler
+├── policy.py         # observation-conditioned student policy interface
+├── harness.py        # prompt, memory, skills, and workflow state
+├── diagnosis.py      # oracle, rule-based, and LLM diagnosis
+├── evolver.py        # bounded and auditable harness mutation
+├── experiment.py     # co-evolution loop and factorial baselines
+├── results.py        # typed rollout and diagnosis records
+├── llm.py            # provider-neutral text backend interface
+├── cli.py            # command-line composition root
+├── configs/          # reproducible run configurations
+├── examples/         # validated environment specifications
+└── tests/            # zero-dependency tests
 ```
+
+See [rsi/README.md](rsi/README.md) for experiment design, metrics, extension
+points, and the staged research roadmap.
+
+## Extending the system
+
+Add a domain by implementing an `EnvironmentCompiler` and registering it in
+the CLI composition root. Add an LLM through an object exposing
+`complete(prompt: str) -> str`, then pass it as `--llm-backend module:object`.
+Keep provider credentials, retry policy, caching, and cost controls inside that
+backend, and never commit secrets.
+
+The old HAP paper experiments are intentionally absent from this branch. They
+remain available on the `main` branch; this branch is scoped only to the RSI
+research direction.

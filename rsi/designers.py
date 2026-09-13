@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import random
 from dataclasses import dataclass, field, replace
 from typing import Dict, List, Protocol
@@ -24,6 +25,7 @@ class DesignContext:
     round_index: int
     recent_scores: List[float] = field(default_factory=list)
     scores_by_difficulty: Dict[int, List[float]] = field(default_factory=dict)
+    scores_by_task: Dict[str, List[float]] = field(default_factory=dict)
     last_spec: EnvironmentSpec | None = None
 
 
@@ -99,17 +101,29 @@ class DifficultyDesigner:
 
 
 class LearningProgressDesigner:
-    """Select the level with the greatest recent absolute learning progress.
+    """Select tasks near the competence frontier with uncertainty bonuses.
 
-    Unvisited levels are explored first.  Absolute progress deliberately values
-    both learning and forgetting; replacing this rule is an obvious student
-    research extension.
+    Sparse observations are shrunk toward a monotone difficulty prior. The
+    acquisition score combines learnability (performance near ``target_score``),
+    epistemic uncertainty, and recent learning/forgetting. This is a compact
+    upper-confidence-bound policy rather than a full curriculum model.
     """
 
     name = "learning_progress"
 
-    def __init__(self, levels: range = range(1, 11)) -> None:
+    def __init__(
+        self,
+        levels: range = range(1, 11),
+        target_score: float = 0.7,
+        exploration_weight: float = 0.2,
+        progress_weight: float = 0.5,
+        prior_strength: float = 2.0,
+    ) -> None:
         self.levels = list(levels)
+        self.target_score = target_score
+        self.exploration_weight = exploration_weight
+        self.progress_weight = progress_weight
+        self.prior_strength = prior_strength
 
     @staticmethod
     def _progress(scores: List[float]) -> float:
@@ -121,16 +135,88 @@ class LearningProgressDesigner:
         new = sum(new_values) / max(1, len(new_values))
         return abs(new - old)
 
+    def _prior(self, level: int) -> float:
+        if len(self.levels) == 1:
+            return self.target_score
+        rank = self.levels.index(level) / (len(self.levels) - 1)
+        return 1.0 - rank
+
+    def acquisition(self, level: int, scores: List[float], total_count: int = 0) -> float:
+        count = len(scores)
+        posterior_mean = (sum(scores) + self.prior_strength * self._prior(level)) / (
+            count + self.prior_strength
+        )
+        learnability = 1.0 - abs(posterior_mean - self.target_score)
+        uncertainty = math.sqrt(math.log(2.0 + total_count) / (count + 1))
+        return (
+            learnability
+            + self.exploration_weight * uncertainty
+            + self.progress_weight * self._progress(scores[-6:])
+        )
+
     def propose(self, context: DesignContext) -> EnvironmentSpec:
-        unvisited = [level for level in self.levels if not context.scores_by_difficulty.get(level)]
-        if unvisited:
-            level = unvisited[0]
-            return spec_for_difficulty(level, context.round_index, f"progress-r{context.round_index}-d{level}")
+        total_count = sum(len(values) for values in context.scores_by_difficulty.values())
         level = max(
             self.levels,
-            key=lambda candidate: (self._progress(context.scores_by_difficulty.get(candidate, [])), -candidate),
+            key=lambda candidate: (
+                self.acquisition(candidate, context.scores_by_difficulty.get(candidate, []), total_count),
+                -candidate,
+            ),
         )
-        return spec_for_difficulty(level, context.round_index, f"progress-r{context.round_index}-d{level}")
+        return spec_for_difficulty(level, context.round_index, f"frontier-r{context.round_index}-d{level}")
+
+
+class MiniGridCurriculumDesigner(LearningProgressDesigner):
+    """Apply the frontier objective across MiniGrid scenario × difficulty arms."""
+
+    name = "minigrid_frontier"
+
+    def __init__(self, scenarios: List[str] | None = None, levels: range = range(2, 9, 3)) -> None:
+        from .minigrid_env import SCENARIOS
+
+        super().__init__(levels)
+        self.scenarios = scenarios or list(SCENARIOS)
+
+    def propose(self, context: DesignContext) -> EnvironmentSpec:
+        from .minigrid_env import minigrid_spec
+
+        total_count = sum(len(values) for values in context.scores_by_task.values())
+        candidates = [(scenario, level) for scenario in self.scenarios for level in self.levels]
+        scenario, level = max(
+            candidates,
+            key=lambda item: (
+                self.acquisition(
+                    item[1],
+                    context.scores_by_task.get(f"minigrid:{item[0]}:{item[1]}", []),
+                    total_count,
+                ),
+                -self.scenarios.index(item[0]),
+                -item[1],
+            ),
+        )
+        return minigrid_spec(
+            scenario,
+            level,
+            context.round_index,
+            f"frontier-r{context.round_index}-{scenario}-d{level}",
+        )
+
+
+class RandomMiniGridDesigner:
+    name = "minigrid_random"
+
+    def __init__(self, seed: int = 0) -> None:
+        from .minigrid_env import SCENARIOS
+
+        self.rng = random.Random(seed)
+        self.scenarios = list(SCENARIOS)
+
+    def propose(self, context: DesignContext) -> EnvironmentSpec:
+        from .minigrid_env import minigrid_spec
+
+        scenario = self.rng.choice(self.scenarios)
+        level = self.rng.randint(1, 10)
+        return minigrid_spec(scenario, level, self.rng.randrange(1_000_000), f"random-r{context.round_index}-{scenario}-d{level}")
 
 
 class LLMDesigner:
@@ -147,7 +233,7 @@ class LLMDesigner:
             "Design one executable environment. Return only a JSON object matching "
             "EnvironmentSpec with fields name, domain, goal, difficulty, horizon, seed, "
             "distractors, partial_observability, required_skills, hidden_rules, "
-            "action_space, metadata. domain must be toy or minigrid. "
+            "action_space, metadata. Keep the domain and schema compatible with the fallback. "
             f"Round={context.round_index}; recent_scores={context.recent_scores[-5:]}"
         )
         try:

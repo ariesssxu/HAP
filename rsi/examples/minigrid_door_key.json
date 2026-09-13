@@ -1,0 +1,18 @@
+{
+  "name": "door-key-medium",
+  "domain": "minigrid",
+  "goal": "find the key, unlock the door, and reach the goal",
+  "difficulty": 5,
+  "horizon": 140,
+  "seed": 11,
+  "distractors": 2,
+  "partial_observability": 1.0,
+  "required_skills": ["navigation", "manipulation"],
+  "hidden_rules": [],
+  "action_space": ["left", "right", "forward", "pickup", "drop", "toggle", "done"],
+  "metadata": {
+    "scenario": "door_key",
+    "tier": 1,
+    "env_id": "MiniGrid-DoorKey-8x8-v0"
+  }
+}

@@ -9,6 +9,7 @@ and a deterministic compiler creates an executable environment.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Protocol
@@ -80,8 +81,8 @@ def validate_spec(spec: EnvironmentSpec) -> EnvironmentSpec:
 
     if not isinstance(spec.name, str) or not spec.name.strip():
         raise SpecValidationError("name must be a non-empty string")
-    if spec.domain not in {"toy", "minigrid"}:
-        raise SpecValidationError("domain must be 'toy' or 'minigrid'")
+    if not isinstance(spec.domain, str) or not re.fullmatch(r"[a-z][a-z0-9_-]*", spec.domain):
+        raise SpecValidationError("domain must be a lowercase identifier")
     if not isinstance(spec.goal, str) or not spec.goal.strip():
         raise SpecValidationError("goal must be a non-empty string")
     if not isinstance(spec.difficulty, int) or not 1 <= spec.difficulty <= 10:
