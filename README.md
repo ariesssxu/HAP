@@ -1,5 +1,7 @@
 # RSI Environment–Harness Co-evolution
 
+> Version 0.4.0 · Python 3.10+ · MiniGrid and ALFWorld are optional extras.
+
 This repository explores recursive self-improvement (RSI) as a controlled
 co-evolution problem. Instead of updating model weights, it evolves two
 explicit, auditable objects around a fixed student:
@@ -28,6 +30,10 @@ student + harness ────────────────────�
 The core safety boundary is: **a model proposes data; trusted code validates
 and compiles it**. An LLM does not directly write or execute environment code.
 
+This is an agent-level self-improvement testbed, not a claim of autonomous
+weight-level RSI. It studies whether retained prompts, memories, procedures,
+and workflows improve a fixed student across an ordered task sequence.
+
 ## Quick start
 
 The project targets Python 3.10 or newer. The built-in toy experiment uses only
@@ -51,6 +57,8 @@ python -m rsi.cli \
 The benchmark spans navigation, door/key planning, dynamic obstacles, lava,
 multi-room exploration, memory, object manipulation, and unlock tasks. The
 curriculum models evidence separately for every scenario × difficulty arm.
+The included workflow policy is only an integration baseline; meaningful
+MiniGrid results require a trained, planning, or language-model policy.
 
 For long-horizon language actions, install the optional ALFWorld adapter:
 
@@ -72,6 +80,23 @@ rsi --config rsi/configs/toy.json
 
 Results are written as one JSONL trace per condition plus `summary.json` under
 the configured output directory.
+
+## Student policy contract
+
+MiniGrid and ALFWorld call the policy after every observation:
+
+```python
+class Policy:
+    def reset(self) -> None:
+        ...
+
+    def act(self, observation, harness, actions, step: int) -> str:
+        # Return exactly one member of actions.
+        ...
+```
+
+Pass an instance or class as `--policy-backend module:object`. Alternatively,
+combine `--llm-policy` with `--llm-backend module:object`.
 
 ## Controlled comparison
 
@@ -97,6 +122,19 @@ improvement threshold plus a complexity penalty. Repeatable `--regression-spec`
 tasks add an anti-forgetting gate. Structured skills retain procedures,
 triggers, provenance, and validation statistics; `--retention both` compares
 persistent experience against a freshly reset Harness.
+
+Run both retention conditions while protecting a held-out task with:
+
+```sh
+python -m rsi.cli \
+  --config rsi/configs/toy.json \
+  --retention both \
+  --regression-spec rsi/examples/toy_spec.json
+```
+
+`retained` carries accepted Harness changes across rounds; `reset` restores the
+initial Harness before every round. Their matched difference is the primary
+measure of benefit from retained experience.
 
 ## Repository layout
 
@@ -134,3 +172,14 @@ backend, and never commit secrets.
 The old HAP paper experiments are intentionally absent from this branch. They
 remain available on the `main` branch; this branch is scoped only to the RSI
 research direction.
+
+## Verification
+
+The zero-dependency suite covers DSL validation, environment allow-lists,
+competence-frontier selection, skill retrieval, mutation rollback, regression
+gating, and retained-versus-reset experiments:
+
+```sh
+python -m unittest discover -s rsi/tests -v
+python -m rsi.cli --config rsi/configs/smoke.json --retention both
+```

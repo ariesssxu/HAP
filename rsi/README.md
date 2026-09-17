@@ -1,4 +1,4 @@
-# Environment and Harness Co-evolution Prototype
+# Environment and Harness Co-evolution Framework
 
 This package is a research scaffold for studying how a system can design both
 an executable environment and the harness around a student agent.
@@ -51,7 +51,7 @@ rsi/
 ├── specs.py                  # JSON DSL, validation, compiler registry
 ├── toy_env.py                # deterministic, no-API local environment
 ├── minigrid_env.py           # allow-listed multi-scenario MiniGrid runtime
-├── alfworld_env.py            # optional text-action household benchmark
+├── alfworld_env.py           # optional text-action household benchmark
 ├── policy.py                 # observation-conditioned student policies
 ├── designers.py              # fixed/random/difficulty/progress/LLM designers
 ├── harness.py                # prompt + memory + skills + workflow
@@ -326,8 +326,8 @@ without changing the evaluation protocol.
 - The toy environment is a transparent unit test for co-evolution mechanics,
   not evidence of real-world self-improvement.
 - The reference evolver proposes only one diagnosis-conditioned candidate; it
-  has paired validation and rollback but no beam search or persistent held-out
-  validation set.
+  supports paired validation, rollback, and user-supplied held-out regression
+  tasks, but not beam search or automatic benchmark partitioning.
 - The frontier model uses a compact shrinkage/UCB heuristic rather than a
   calibrated Bayesian ability model.
 - LLM responses are only JSON-parsed and schema-validated; production code also
