@@ -1,0 +1,19 @@
+{
+  "name": "alfworld-pick-and-place-d5",
+  "domain": "alfworld",
+  "goal": "pick and place",
+  "difficulty": 5,
+  "horizon": 70,
+  "seed": 7,
+  "distractors": 0,
+  "partial_observability": 1.0,
+  "required_skills": ["planning", "navigation", "manipulation"],
+  "hidden_rules": [],
+  "action_space": ["text_command"],
+  "metadata": {
+    "task_type": "pick_and_place",
+    "task_type_id": 1,
+    "split": "train",
+    "config_path": "configs/base_config.yaml"
+  }
+}

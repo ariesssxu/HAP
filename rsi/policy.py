@@ -32,7 +32,7 @@ class WorkflowPolicy:
 
     def act(self, observation: Any, harness: Harness, actions: Sequence[str], step: int) -> str:
         workflow = [item for item in harness.workflow if item in actions]
-        return workflow[step % len(workflow)] if workflow else "forward"
+        return workflow[step % len(workflow)] if workflow else actions[0]
 
 
 class LLMPolicy:

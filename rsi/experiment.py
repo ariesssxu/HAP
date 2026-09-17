@@ -40,6 +40,7 @@ class RunConfig:
     validation_episodes: int = 2
     min_improvement: float = 0.0
     complexity_penalty: float = 0.01
+    regression_tolerance: float = 0.0
 
     @classmethod
     def from_dict(cls, value: Dict[str, Any]) -> "RunConfig":
@@ -50,7 +51,7 @@ class RunConfig:
         config = cls(**value)
         if config.rounds < 1 or config.episodes_per_round < 1 or config.validation_episodes < 1:
             raise ValueError("round and episode counts must be positive")
-        if config.min_improvement < 0 or config.complexity_penalty < 0:
+        if config.min_improvement < 0 or config.complexity_penalty < 0 or config.regression_tolerance < 0:
             raise ValueError("improvement threshold and complexity penalty must be non-negative")
         return config
 
@@ -58,6 +59,7 @@ class RunConfig:
 @dataclass
 class ExperimentSummary:
     baseline: str
+    retention: str
     rounds: int
     episodes: int
     successes: int
@@ -86,6 +88,7 @@ class CoEvolutionExperiment:
         evolver: HarnessEvolver,
         initial_harness: Harness,
         config: RunConfig,
+        regression_specs: Iterable[EnvironmentSpec] = (),
     ) -> None:
         self.registry = registry
         self.fixed_spec = fixed_spec
@@ -94,10 +97,11 @@ class CoEvolutionExperiment:
         self.evolver = evolver
         self.initial_harness = initial_harness
         self.config = config
+        self.regression_specs = tuple(regression_specs)
 
     @staticmethod
     def _complexity(harness: Harness) -> int:
-        return len(harness.skills) + len(harness.memory) + len(harness.workflow)
+        return len(harness.skill_library) + len(harness.memory) + len(harness.workflow)
 
     @staticmethod
     def _aulc(scores: List[float]) -> float:
@@ -105,24 +109,36 @@ class CoEvolutionExperiment:
             return scores[0]
         return sum((left + right) / 2 for left, right in zip(scores, scores[1:])) / (len(scores) - 1)
 
-    def _validate_mutation(self, environment: Any, incumbent: Harness, candidate: Harness, seed: int) -> Dict[str, Any]:
-        """Evaluate both harnesses on identical seeds and apply a complexity-aware gate."""
-
-        seeds = [seed + offset + 1 for offset in range(self.config.validation_episodes)]
-        incumbent_score = sum(environment.run(incumbent, item).score for item in seeds) / len(seeds)
-        candidate_score = sum(environment.run(candidate, item).score for item in seeds) / len(seeds)
-        complexity_delta = max(0, self._complexity(candidate) - self._complexity(incumbent))
-        required_gain = self.config.min_improvement + self.config.complexity_penalty * complexity_delta
-        accepted = candidate.revision > incumbent.revision and candidate_score - incumbent_score > required_gain
+    def _paired_scores(self, environment: Any, incumbent: Harness, candidate: Harness, seeds: List[int]) -> Dict[str, float]:
         return {
-            "accepted": accepted,
-            "incumbent_score": incumbent_score,
-            "candidate_score": candidate_score,
-            "required_gain": required_gain,
-            "validation_seeds": seeds,
+            "incumbent": sum(environment.run(incumbent, item).score for item in seeds) / len(seeds),
+            "candidate": sum(environment.run(candidate, item).score for item in seeds) / len(seeds),
         }
 
-    def run(self, baseline: Baseline) -> ExperimentSummary:
+    def _validate_mutation(self, environment: Any, incumbent: Harness, candidate: Harness, seed: int) -> Dict[str, Any]:
+        """Use paired seeds and reject improvements that regress on held-out tasks."""
+
+        seeds = [seed + offset + 1 for offset in range(self.config.validation_episodes)]
+        current = self._paired_scores(environment, incumbent, candidate, seeds)
+        regressions = []
+        for spec in self.regression_specs:
+            scores = self._paired_scores(self.registry.compile(spec), incumbent, candidate, seeds)
+            regressions.append({"environment": spec.name, **scores, "delta": scores["candidate"] - scores["incumbent"]})
+        complexity_delta = max(0, self._complexity(candidate) - self._complexity(incumbent))
+        required_gain = self.config.min_improvement + self.config.complexity_penalty * complexity_delta
+        gain = current["candidate"] - current["incumbent"]
+        no_regression = all(item["delta"] >= -self.config.regression_tolerance for item in regressions)
+        accepted = candidate.revision > incumbent.revision and gain > required_gain and no_regression
+        return {
+            "accepted": accepted,
+            "incumbent_score": current["incumbent"],
+            "candidate_score": current["candidate"],
+            "required_gain": required_gain,
+            "validation_seeds": seeds,
+            "regression_results": regressions,
+        }
+
+    def run(self, baseline: Baseline, retention: str = "retained") -> ExperimentSummary:
         """Run one condition with isolated state and write one JSON object per episode."""
 
         rng = random.Random(self.config.seed)
@@ -138,6 +154,8 @@ class CoEvolutionExperiment:
         last_spec = self.fixed_spec
 
         for round_index in range(self.config.rounds):
+            if retention == "reset" and round_index:
+                harness = self.initial_harness.clone()
             designer = evolving_designer if baseline.evolve_environment else fixed_designer
             context = DesignContext(
                 round_index=round_index,
@@ -174,10 +192,17 @@ class CoEvolutionExperiment:
                 if baseline.evolve_harness and not result.success:
                     candidate = self.evolver.evolve(harness, diagnosis)
                     decision = self._validate_mutation(environment, harness, candidate, rollout_seed)
-                    record["mutation_candidate"] = candidate.to_dict()
                     record["mutation_validation"] = decision
                     if candidate.revision > harness.revision:
                         proposed_mutations += 1
+                    for name in diagnosis.suggested_skills:
+                        skill = candidate.skill_library.get(name)
+                        if skill:
+                            if decision["accepted"]:
+                                skill.successes += 1
+                            else:
+                                skill.failures += 1
+                    record["mutation_candidate"] = candidate.to_dict()
                     if decision["accepted"]:
                         harness = candidate
                         accepted_mutations += 1
@@ -185,13 +210,14 @@ class CoEvolutionExperiment:
 
         output_dir = Path(self.config.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        log_path = output_dir / f"{baseline.name}.jsonl"
+        log_path = output_dir / f"{baseline.name}__{retention}.jsonl"
         log_path.write_text(
             "".join(json.dumps(record, sort_keys=True) + "\n" for record in records),
             encoding="utf-8",
         )
         return ExperimentSummary(
             baseline=baseline.name,
+            retention=retention,
             rounds=self.config.rounds,
             episodes=len(records),
             successes=successes,
@@ -207,10 +233,17 @@ class CoEvolutionExperiment:
             log_path=str(log_path),
         )
 
-    def run_suite(self, baselines: Iterable[Baseline] = BASELINES) -> List[ExperimentSummary]:
+    def run_suite(
+        self,
+        baselines: Iterable[Baseline] = BASELINES,
+        retention_modes: Iterable[str] = ("retained",),
+    ) -> List[ExperimentSummary]:
         """Run all conditions. The caller should supply fresh stateful designers per suite."""
 
-        summaries = [self.run(baseline) for baseline in baselines]
+        modes = tuple(retention_modes)
+        if not modes or any(mode not in {"retained", "reset"} for mode in modes):
+            raise ValueError("retention modes must be 'retained' or 'reset'")
+        summaries = [self.run(baseline, mode) for mode in modes for baseline in baselines]
         output_dir = Path(self.config.output_dir)
         summary_path = output_dir / "summary.json"
         summary_path.write_text(

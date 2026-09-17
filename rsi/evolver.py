@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .harness import Harness
+from .harness import Harness, Skill
 from .results import Diagnosis
 
 
@@ -20,6 +20,12 @@ class HarnessEvolver:
             return harness.clone()
 
         skills = list(dict.fromkeys(harness.skills + diagnosis.suggested_skills))
+        skill_library = dict(harness.skill_library)
+        for name in diagnosis.suggested_skills:
+            skill_library.setdefault(
+                name,
+                Skill(name=name, instruction=diagnosis.explanation, trigger=diagnosis.category),
+            )
         memory = list(dict.fromkeys(harness.memory + diagnosis.memory_items))[-self.max_memory_items :]
         workflow = list(harness.workflow)
         for action in diagnosis.workflow_actions:
@@ -37,6 +43,7 @@ class HarnessEvolver:
             prompt=prompt,
             memory=memory,
             skills=skills,
+            skill_library=skill_library,
             workflow=workflow,
             revision=harness.revision + 1,
             metadata={**harness.metadata, "last_diagnosis": diagnosis.category},

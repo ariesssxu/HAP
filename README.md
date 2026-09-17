@@ -52,6 +52,17 @@ The benchmark spans navigation, door/key planning, dynamic obstacles, lava,
 multi-room exploration, memory, object manipulation, and unlock tasks. The
 curriculum models evidence separately for every scenario × difficulty arm.
 
+For long-horizon language actions, install the optional ALFWorld adapter:
+
+```sh
+python -m pip install -e '.[alfworld]'
+alfworld-download
+python -m rsi.cli --domain alfworld \
+  --alfworld-config /path/to/base_config.yaml \
+  --config rsi/configs/alfworld.json \
+  --policy-backend my_policy:Policy
+```
+
 For an editable install and the `rsi` command:
 
 ```sh
@@ -82,8 +93,10 @@ scores are shrunk toward a monotone difficulty prior, then balanced by target
 learnability, epistemic uncertainty, and recent learning or forgetting. Harness
 edits are not applied directly. Each candidate is compared with its incumbent
 on identical validation seeds and accepted only when its gain exceeds a minimum
-improvement threshold plus a complexity penalty. This creates a clean rollback
-ablation without introducing an optimization dependency.
+improvement threshold plus a complexity penalty. Repeatable `--regression-spec`
+tasks add an anti-forgetting gate. Structured skills retain procedures,
+triggers, provenance, and validation statistics; `--retention both` compares
+persistent experience against a freshly reset Harness.
 
 ## Repository layout
 
@@ -93,6 +106,7 @@ rsi/
 ├── designers.py      # fixed, random, adaptive, and LLM designers
 ├── toy_env.py        # deterministic reference compiler/environment
 ├── minigrid_env.py   # validated multi-scenario MiniGrid compiler
+├── alfworld_env.py   # long-horizon text-action benchmark adapter
 ├── policy.py         # observation-conditioned student policy interface
 ├── harness.py        # prompt, memory, skills, and workflow state
 ├── diagnosis.py      # oracle, rule-based, and LLM diagnosis

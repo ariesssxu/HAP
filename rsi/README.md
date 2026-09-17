@@ -51,6 +51,7 @@ rsi/
 ├── specs.py                  # JSON DSL, validation, compiler registry
 ├── toy_env.py                # deterministic, no-API local environment
 ├── minigrid_env.py           # allow-listed multi-scenario MiniGrid runtime
+├── alfworld_env.py            # optional text-action household benchmark
 ├── policy.py                 # observation-conditioned student policies
 ├── designers.py              # fixed/random/difficulty/progress/LLM designers
 ├── harness.py                # prompt + memory + skills + workflow
@@ -62,10 +63,12 @@ rsi/
 ├── configs/
 │   ├── smoke.json
 │   ├── toy.json
-│   └── minigrid.json
+│   ├── minigrid.json
+│   └── alfworld.json
 ├── examples/
 │   ├── toy_spec.json
-│   └── minigrid_door_key.json
+│   ├── minigrid_door_key.json
+│   └── alfworld_pick_and_place.json
 └── tests/
     └── test_smoke.py
 ```
@@ -132,6 +135,23 @@ workflow policy only checks integration plumbing; meaningful experiments must
 provide a trained, planning, or language-model policy. Use `--llm-policy` with
 `--llm-backend` for the built-in language-model adapter.
 
+## ALFWorld benchmark
+
+The optional text adapter covers ALFWorld's six task families: pick-and-place,
+look-at-in-light, clean/heat/cool-then-place, and pick-two-then-place. It uses
+the official admissible-command interface and supports train, in-distribution,
+and out-of-distribution evaluation splits.
+
+```sh
+python -m pip install -e '.[alfworld]'
+alfworld-download
+python -m rsi.cli --domain alfworld \
+  --alfworld-config /path/to/base_config.yaml \
+  --config rsi/configs/alfworld.json \
+  --retention both \
+  --policy-backend my_policy:Policy
+```
+
 ## The four required baselines
 
 Every suite runs a 2 × 2 factorial comparison:
@@ -170,7 +190,7 @@ flag.
 
 - `prompt`: global behavioral instructions;
 - `memory`: learned facts or hidden constraints;
-- `skills`: declared capabilities/tools;
+- `skills`: declared capabilities/tools plus a structured procedure library;
 - `workflow`: ordered actions taken during a rollout.
 
 The oracle diagnoser reads privileged failure signals and provides an upper
@@ -180,6 +200,13 @@ evolver only makes bounded, deduplicated edits and increments a revision number,
 which keeps every change auditable in the JSONL logs. The experiment evaluates
 each candidate and incumbent on paired seeds, penalizes added complexity, and
 rejects changes without sufficient validation gain.
+
+Each stored procedure records its trigger, instruction, provenance, and online
+success/failure counts. Retrieval ranks task relevance and empirical
+reliability without requiring an embedding service. Repeatable
+`--regression-spec path.json` arguments protect held-out tasks from regression.
+Use `--retention both` to compare persistent experience with a Harness reset at
+every round, isolating whether later gains actually depend on retained state.
 
 ## Connecting an LLM
 

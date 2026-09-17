@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Sequence
 
 from .designers import (
+    ALFWorldCurriculumDesigner,
     DifficultyDesigner,
     LearningProgressDesigner,
     LLMDesigner,
@@ -16,6 +17,7 @@ from .designers import (
     RandomMiniGridDesigner,
     spec_for_difficulty,
 )
+from .alfworld_env import ALFWorldCompiler, alfworld_spec
 from .diagnosis import LLMDiagnoser, OracleDiagnoser, RuleBasedDiagnoser
 from .evolver import HarnessEvolver
 from .experiment import BASELINES, CoEvolutionExperiment, RunConfig
@@ -34,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--episodes-per-round", type=int, help="override rollouts per round")
     parser.add_argument("--seed", type=int, help="override random seed")
     parser.add_argument("--output-dir", help="override metrics directory")
-    parser.add_argument("--domain", choices=("toy", "minigrid"), default="toy")
+    parser.add_argument("--domain", choices=("toy", "minigrid", "alfworld"), default="toy")
     parser.add_argument("--spec", help="fixed EnvironmentSpec JSON (default: built-in level 2)")
     parser.add_argument(
         "--designer",
@@ -46,6 +48,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--llm-backend", help="provider-neutral backend import path, module:object")
     parser.add_argument("--policy-backend", help="student policy import path, module:object")
     parser.add_argument("--llm-policy", action="store_true", help="use the configured text backend as a step policy")
+    parser.add_argument("--alfworld-config", help="path to ALFWorld base_config.yaml")
+    parser.add_argument("--regression-spec", action="append", default=[], help="held-out EnvironmentSpec JSON; repeatable")
+    parser.add_argument("--retention", choices=("retained", "reset", "both"), default="retained")
     parser.add_argument(
         "--baseline",
         choices=("all",) + tuple(b.name for b in BASELINES),
@@ -70,6 +75,12 @@ def _load_config(args: argparse.Namespace) -> RunConfig:
 
 
 def _build_designer(name: str, seed: int, backend: object, fallback: EnvironmentSpec):
+    if fallback.domain == "alfworld":
+        if name == "llm":
+            return LLMDesigner(backend, fallback=fallback)
+        return ALFWorldCurriculumDesigner(
+            str(fallback.metadata["config_path"]), str(fallback.metadata["split"])
+        )
     if fallback.domain == "minigrid":
         if name == "llm":
             return LLMDesigner(backend, fallback=fallback)
@@ -97,6 +108,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         fixed_spec = EnvironmentSpec.from_json(args.spec)
     elif args.domain == "minigrid":
         fixed_spec = minigrid_spec("door_key", 5, config.seed, "fixed-minigrid")
+    elif args.domain == "alfworld":
+        if not args.alfworld_config:
+            raise ValueError("--domain alfworld requires --alfworld-config")
+        fixed_spec = alfworld_spec("pick_and_place", 5, config.seed, args.alfworld_config)
     else:
         fixed_spec = spec_for_difficulty(4, config.seed, "fixed-toy")
     backend = load_backend(args.llm_backend)
@@ -107,7 +122,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "rule_based": RuleBasedDiagnoser(),
         "llm": LLMDiagnoser(backend),
     }
-    registry = CompilerRegistry([ToyCompiler(), MiniGridCompiler(policy)])
+    alfworld_config = str(fixed_spec.metadata["config_path"]) if fixed_spec.domain == "alfworld" else None
+    registry = CompilerRegistry(
+        [ToyCompiler(), MiniGridCompiler(policy), ALFWorldCompiler(policy, alfworld_config)]
+    )
+    regression_specs = [EnvironmentSpec.from_json(path) for path in args.regression_spec]
     experiment = CoEvolutionExperiment(
         registry=registry,
         fixed_spec=fixed_spec,
@@ -116,9 +135,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         evolver=HarnessEvolver(),
         initial_harness=Harness(),
         config=config,
+        regression_specs=regression_specs,
     )
     selected = BASELINES if args.baseline == "all" else tuple(b for b in BASELINES if b.name == args.baseline)
-    summaries = experiment.run_suite(selected)
+    retention_modes = ("retained", "reset") if args.retention == "both" else (args.retention,)
+    summaries = experiment.run_suite(selected, retention_modes)
     print(json.dumps([summary.to_dict() for summary in summaries], indent=2))
     return 0
 

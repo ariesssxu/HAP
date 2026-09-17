@@ -219,6 +219,29 @@ class RandomMiniGridDesigner:
         return minigrid_spec(scenario, level, self.rng.randrange(1_000_000), f"random-r{context.round_index}-{scenario}-d{level}")
 
 
+class ALFWorldCurriculumDesigner(LearningProgressDesigner):
+    name = "alfworld_frontier"
+
+    def __init__(self, config_path: str, split: str = "train") -> None:
+        from .alfworld_env import TASK_TYPES
+
+        super().__init__(range(3, 9, 2))
+        self.config_path, self.split = config_path, split
+        self.tasks = list(TASK_TYPES)
+
+    def propose(self, context: DesignContext) -> EnvironmentSpec:
+        from .alfworld_env import alfworld_spec
+
+        total = sum(len(values) for values in context.scores_by_task.values())
+        task, level = max(
+            ((task, level) for task in self.tasks for level in self.levels),
+            key=lambda item: self.acquisition(
+                item[1], context.scores_by_task.get(f"alfworld:{item[0]}:{item[1]}", []), total
+            ),
+        )
+        return alfworld_spec(task, level, context.round_index, self.config_path, self.split)
+
+
 class LLMDesigner:
     """Provider-neutral stub: ask for JSON, then pass it through strict validation."""
 

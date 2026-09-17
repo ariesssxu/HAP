@@ -6,10 +6,11 @@ import unittest
 from pathlib import Path
 
 from rsi.designers import DesignContext, LearningProgressDesigner, MiniGridCurriculumDesigner, spec_for_difficulty
+from rsi.alfworld_env import ALFWorldCompiler, TASK_TYPES, alfworld_spec
 from rsi.diagnosis import OracleDiagnoser
 from rsi.evolver import HarnessEvolver
-from rsi.experiment import BASELINES, CoEvolutionExperiment, RunConfig
-from rsi.harness import Harness
+from rsi.experiment import BASELINES, Baseline, CoEvolutionExperiment, RunConfig
+from rsi.harness import Harness, Skill
 from rsi.minigrid_env import MiniGridCompiler, SCENARIOS, minigrid_spec
 from rsi.policy import WorkflowPolicy
 from rsi.specs import CompilerRegistry, EnvironmentSpec, SpecValidationError
@@ -34,6 +35,23 @@ class SpecTests(unittest.TestCase):
         for scenario in SCENARIOS:
             environment = compiler.compile(minigrid_spec(scenario, 5))
             self.assertEqual(environment.spec.metadata["scenario"], scenario)
+
+    def test_alfworld_tasks_compile_without_importing_dependency(self) -> None:
+        compiler = ALFWorldCompiler(WorkflowPolicy(), "base.yaml")
+        for task_type in TASK_TYPES:
+            environment = compiler.compile(alfworld_spec(task_type, config_path="base.yaml"))
+            self.assertEqual(environment.spec.metadata["task_type"], task_type)
+
+
+class HarnessTests(unittest.TestCase):
+    def test_skill_retrieval_prefers_relevant_reliable_procedure(self) -> None:
+        harness = Harness(
+            skill_library={
+                "door": Skill("door", "pick up key then toggle", "door key", successes=4),
+                "lava": Skill("lava", "avoid red cells", "hazard", successes=10),
+            }
+        )
+        self.assertEqual(harness.retrieve_skills("open the door with a key", limit=1)[0].name, "door")
 
 
 class EvolutionTests(unittest.TestCase):
@@ -97,6 +115,22 @@ class EvolutionTests(unittest.TestCase):
             self.assertTrue(all(0.0 <= summary.normalized_aulc <= 1.0 for summary in summaries))
             summary = json.loads((Path(directory) / "summary.json").read_text())
             self.assertEqual({item["baseline"] for item in summary}, {item.name for item in BASELINES})
+
+    def test_retention_control_isolates_cross_round_learning(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            experiment = CoEvolutionExperiment(
+                registry=CompilerRegistry([ToyCompiler()]),
+                fixed_spec=spec_for_difficulty(4),
+                evolving_designer=LearningProgressDesigner(range(1, 4)),
+                diagnoser=OracleDiagnoser(),
+                evolver=HarnessEvolver(),
+                initial_harness=Harness(),
+                config=RunConfig(rounds=2, episodes_per_round=1, output_dir=directory),
+            )
+            baseline = Baseline("retention_test", False, True)
+            summaries = experiment.run_suite([baseline], ("retained", "reset"))
+            by_mode = {summary.retention: summary for summary in summaries}
+            self.assertGreater(by_mode["retained"].successes, by_mode["reset"].successes)
 
 
 if __name__ == "__main__":
